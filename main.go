@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"time"
 	"unicode/utf8"
 
@@ -59,24 +60,42 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%02d:%02d", hours, minutes)
 }
 
-func writeCsv(w csv.Writer, events []*ics.VEvent, name string) error {
-	for _, event := range events {
-		start, err := parseTime(event.GetProperty("DTSTART").Value)
-		if err != nil {
-			return err
-		}
+type Column struct {
+	name      string
+	date      string
+	startTime string
+	endTime   string
+	duration  string
+}
 
-		end, err := parseTime(event.GetProperty("DTEND").Value)
-		if err != nil {
-			return err
-		}
+func NewColumn(event *ics.VEvent, name string) (Column, error) {
+	start, err := parseTime(event.GetProperty("DTSTART").Value)
+	if err != nil {
+		return Column{}, err
+	}
 
-		err = w.Write([]string{
-			name,
-			start.Format("2006/01/02"),
-			start.Format("15:04"),
-			end.Format("15:04"),
-			formatDuration(end.Sub(start)),
+	end, err := parseTime(event.GetProperty("DTEND").Value)
+	if err != nil {
+		return Column{}, err
+	}
+
+	return Column{
+		name:      name,
+		date:      start.Format("2006/01/02"),
+		startTime: start.Format("15:04"),
+		endTime:   end.Format("15:04"),
+		duration:  formatDuration(end.Sub(start)),
+	}, nil
+}
+
+func writeCsv(w csv.Writer, cols []Column) error {
+	for _, col := range cols {
+		err := w.Write([]string{
+			col.name,
+			col.date,
+			col.startTime,
+			col.endTime,
+			col.duration,
 		})
 		if err != nil {
 			return err
@@ -115,6 +134,20 @@ func main() {
 		events = append(events, event)
 	}
 
+	// create columns
+	columns := make([]Column, len(events))
+	for i, event := range events {
+		column, err := NewColumn(event, args.name)
+		if err != nil {
+			log.Fatal(err)
+		}
+		columns[i] = column
+	}
+	// sort columns by date and start time
+	sort.Slice(columns, func(i, j int) bool {
+		return columns[i].date < columns[j].date || (columns[i].date == columns[j].date && columns[i].startTime < columns[j].startTime)
+	})
+
 	// write csv
 	var writer io.Writer
 	if args.isStdout {
@@ -137,7 +170,7 @@ func main() {
 	w.Comma = c
 	defer w.Flush()
 
-	err = writeCsv(*w, events, args.name)
+	err = writeCsv(*w, columns)
 	if err != nil {
 		log.Fatal(err)
 	}
