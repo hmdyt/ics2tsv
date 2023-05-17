@@ -1,4 +1,4 @@
-module github.com/hmdyt/ics2csv
+module github.com/hmdyt/ics2tsv
 
 go 1.19
 
