@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
+	"unicode/utf8"
 
 	"github.com/akamensky/argparse"
 	ics "github.com/arran4/golang-ical"
@@ -16,20 +18,31 @@ type CliArgs struct {
 	outPath            string
 	eventSummaryFilter string
 	name               string
+	comma              string
+	isStdout           bool
 }
 
 func parseArgs() CliArgs {
 	parser := argparse.NewParser("ics2csv", "Converts an ics file to a csv file")
 	icsPath := parser.String("i", "ics", &argparse.Options{Required: true, Help: "Path to the ics file"})
-	outPath := parser.String("c", "csv", &argparse.Options{Required: true, Help: "Path to the output csv file"})
+	outPath := parser.String("c", "csv", &argparse.Options{Required: false, Help: "Path to the output csv file", Default: "out.csv"})
 	eventSummaryFilter := parser.String("f", "filter", &argparse.Options{Required: false, Help: "Filter events by summary"})
 	name := parser.String("n", "name", &argparse.Options{Required: false, Help: "Your name", Default: "yourName"})
+	comma := parser.String("d", "delimiter", &argparse.Options{Required: false, Help: "Delimiter for csv", Default: "\t"})
+	isStdout := parser.Flag("s", "stdout", &argparse.Options{Required: false, Help: "Write to stdout instead of a file"})
 	err := parser.Parse(os.Args)
 	if err != nil {
 		fmt.Print(parser.Usage(err))
 		os.Exit(1)
 	}
-	return CliArgs{*icsPath, *outPath, *eventSummaryFilter, *name}
+	return CliArgs{
+		*icsPath,
+		*outPath,
+		*eventSummaryFilter,
+		*name,
+		*comma,
+		*isStdout,
+	}
 }
 
 func parseTime(timeString string) (time.Time, error) {
@@ -103,17 +116,25 @@ func main() {
 	}
 
 	// write csv
-	outFile, err := os.Create(args.outPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err = outFile.Close(); err != nil {
+	var writer io.Writer
+	if args.isStdout {
+		writer = os.Stdout
+	} else {
+		f, err := os.Create(args.outPath)
+		if err != nil {
 			log.Fatal(err)
 		}
-	}()
+		defer func() {
+			if err = f.Close(); err != nil {
+				log.Fatal(err)
+			}
+		}()
+		writer = f
+	}
 
-	w := csv.NewWriter(outFile)
+	w := csv.NewWriter(writer)
+	c, _ := utf8.DecodeRuneInString(args.comma)
+	w.Comma = c
 	defer w.Flush()
 
 	err = writeCsv(*w, events, args.name)
