@@ -1,10 +1,10 @@
 # ics2tsv
 - convert ics file to tsv file
 
-# Installation
+## Installation
 - build and copy your bin directory
 
-# Typical usage
+## Typical usage
 - Export ics file from your calender app, and type a command below:
 
 ```bash
